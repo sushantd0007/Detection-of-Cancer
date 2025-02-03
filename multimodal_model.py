@@ -18,7 +18,7 @@ clinical_file_path = 'Generated_Clinical_Dataset.csv'
 clinical_data = pd.read_csv(clinical_file_path)
 
 # Identify categorical and numeric columns
-categorical_columns = ['Gender', 'Smoking_Status', 'Tumor_Stage']  # Replace with your actual categorical column names
+categorical_columns = ['Gender', 'Smoking_Status', 'Tumor_Stage']
 numeric_columns = [col for col in clinical_data.columns if col not in categorical_columns + ['Label']]
 
 # Apply OneHotEncoding to categorical columns
@@ -54,29 +54,37 @@ clinical_test = scaler_clinical.transform(clinical_test)
 def build_multimodal_model():
     # Genomic data branch
     input_genomic = tf.keras.Input(shape=(genomic_train.shape[1],))
-    x1 = tf.keras.layers.Dense(128, activation="relu")(input_genomic)
-    x1 = tf.keras.layers.BatchNormalization()(x1)
-    x1 = tf.keras.layers.Dropout(0.3)(x1)
+    x1 = input_genomic
+    for _ in range(75):
+        x1 = tf.keras.layers.Dense(128, activation="relu")(x1)
+        x1 = tf.keras.layers.BatchNormalization()(x1)
+        x1 = tf.keras.layers.Dropout(0.3)(x1)
 
     # Clinical data branch
     input_clinical = tf.keras.Input(shape=(clinical_train.shape[1],))
-    x2 = tf.keras.layers.Dense(64, activation="relu")(input_clinical)
-    x2 = tf.keras.layers.BatchNormalization()(x2)
-    x2 = tf.keras.layers.Dropout(0.3)(x2)
+    x2 = input_clinical
+    for _ in range(50):
+        x2 = tf.keras.layers.Dense(64, activation="relu")(x2)
+        x2 = tf.keras.layers.BatchNormalization()(x2)
+        x2 = tf.keras.layers.Dropout(0.3)(x2)
 
     # Image data branch
     input_image = tf.keras.Input(shape=image_train.shape[1:])
-    x3 = tf.keras.layers.Conv2D(32, (3, 3), activation="relu")(input_image)
-    x3 = tf.keras.layers.MaxPooling2D((2, 2))(x3)
-    x3 = tf.keras.layers.Conv2D(64, (3, 3), activation="relu")(x3)
-    x3 = tf.keras.layers.MaxPooling2D((2, 2))(x3)
+    x3 = input_image
+    for _ in range(10):  # Reduce number of layers to avoid dimension shrinking
+        x3 = tf.keras.layers.Conv2D(64, (3, 3), activation="relu", padding='same')(x3)
+        x3 = tf.keras.layers.MaxPooling2D((2, 2), padding='same')(x3)
     x3 = tf.keras.layers.Flatten()(x3)
-    x3 = tf.keras.layers.Dense(64, activation="relu")(x3)
+    for _ in range(25):  # Fully connected layers after flattening
+        x3 = tf.keras.layers.Dense(64, activation="relu")(x3)
 
     # Combine branches
     combined = tf.keras.layers.concatenate([x1, x2, x3])
-    x = tf.keras.layers.Dense(64, activation="relu")(combined)
-    x = tf.keras.layers.Dropout(0.3)(x)
+    x = combined
+    for _ in range(25):
+        x = tf.keras.layers.Dense(128, activation="relu")(x)
+        x = tf.keras.layers.Dropout(0.3)(x)
+
     output = tf.keras.layers.Dense(1, activation="sigmoid")(x)
 
     # Compile model
@@ -92,7 +100,7 @@ history = model.fit(
     [genomic_train, clinical_train, image_train],
     y_train,
     validation_split=0.2,
-    epochs=30,
+    epochs=150,
     batch_size=32
 )
 
@@ -112,10 +120,9 @@ y_prob = model.predict([genomic_test, clinical_test, image_test])
 roc_auc = roc_auc_score(y_test, y_prob)
 print(f"\nROC-AUC Score: {roc_auc:.2f}")
 
-# Simple Output for Better Understanding
-num_correct = np.sum(y_pred == y_test)
-total_samples = len(y_test)
-print(f"\nSimpler Output: Correct Predictions: {num_correct}/{total_samples} ({(num_correct/total_samples)*100:.2f}% accuracy)")
+# Save the Model
+model.save('enhanced_multimodal_cancer_model.keras')
+print("\nEnhanced model saved as 'enhanced_multimodal_cancer_model.keras'")
 
 # Plot training history
 plt.figure(figsize=(10, 6))
@@ -139,7 +146,3 @@ plt.savefig('loss_plot.png')
 plt.close()
 
 print("\nPlots saved as 'accuracy_plot.png' and 'loss_plot.png'")
-
-# Save the Model
-model.save('multimodal_cancer_model.keras')
-print("\nModel saved as 'multimodal_cancer_model.keras'")
